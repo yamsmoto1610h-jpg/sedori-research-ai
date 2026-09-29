@@ -14,6 +14,17 @@ st.title("🔍 せどりリサーチAI")
 
 st.header("📦 商品検索")
 
+st.subheader("📷 バーコード撮影")
+st.write("商品のJANバーコードをカメラで撮影できます。")
+
+camera_image = st.camera_input("バーコードを撮影")
+
+if camera_image is not None:
+    st.success("✅ バーコード画像を撮影しました")
+    st.info("次のアップデートで、この画像からJANコードを自動取得します。")
+
+st.divider()
+
 jan = st.text_input(
     "JANコードを入力",
     placeholder="例：4902430912526"
@@ -22,7 +33,8 @@ jan = st.text_input(
 if jan:
     jan = jan.strip()
 
-    if jan.isdigit() and len(jan) in (8, 12, 13):
+    if jan.isdigit() and len(jan) in [8, 12, 13]:
+
         st.success("✅ JANコードを入力しました")
 
         amazon_url = (
@@ -30,13 +42,13 @@ if jan:
             + quote(jan)
         )
 
-        google_url = (
-            "https://www.google.com/search?q="
+        mercari_url = (
+            "https://jp.mercari.com/search?keyword="
             + quote(jan)
         )
 
-        mercari_url = (
-            "https://jp.mercari.com/search?keyword="
+        google_url = (
+            "https://www.google.com/search?q="
             + quote(jan)
         )
 
@@ -115,23 +127,22 @@ if st.button("利益を計算する"):
 
     st.subheader("📊 計算結果")
 
-    st.write(
-        f"販売手数料：{fee:,}円"
-    )
+    col1, col2 = st.columns(2)
 
-    st.write(
-        f"送料：{shipping:,}円"
-    )
+    with col1:
+        st.metric(
+            "💰 想定利益",
+            f"{profit:,}円"
+        )
 
-    st.metric(
-        "💰 想定利益",
-        f"{profit:,}円"
-    )
+    with col2:
+        st.metric(
+            "📈 ROI",
+            f"{roi:.1f}%"
+        )
 
-    st.metric(
-        "📈 ROI",
-        f"{roi:.1f}%"
-    )
+    st.write(f"販売手数料：{fee:,}円")
+    st.write(f"送料：{shipping:,}円")
 
     if profit >= 1500 and roi >= 20:
         st.success("🔥 仕入れ候補")
