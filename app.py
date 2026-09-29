@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 st.title("🔍 せどりリサーチAI")
-st.caption("バーコードから相場検索・利益計算まで")
+st.caption("バーコード → 相場確認 → 利益計算 → 仕入れ判断")
 
 
 # =========================
@@ -36,25 +36,22 @@ def read_barcode(image):
 
     images_to_try = [image]
 
-    # 2倍
     images_to_try.append(
         image.resize(
             (image.width * 2, image.height * 2)
         )
     )
 
-    # 3倍
     images_to_try.append(
         image.resize(
             (image.width * 3, image.height * 3)
         )
     )
 
-    # グレースケール
     gray = ImageOps.grayscale(image)
+
     images_to_try.append(gray)
 
-    # コントラスト強化
     images_to_try.append(
         ImageEnhance.Contrast(gray).enhance(2.0)
     )
@@ -142,12 +139,8 @@ st.header("📦 商品検索")
 
 st.subheader("📷 バーコード撮影")
 
-st.write(
-    "商品のJANバーコードを撮影してください。"
-)
-
 camera_image = st.camera_input(
-    "バーコードを撮影"
+    "商品のJANバーコードを撮影"
 )
 
 if camera_image is not None:
@@ -161,7 +154,7 @@ if camera_image is not None:
         st.session_state.jan = barcode
 
         st.success(
-            f"✅ JANコードを読み取りました：{barcode}"
+            f"✅ JANコード：{barcode}"
         )
 
     else:
@@ -194,7 +187,7 @@ if jan:
 
     if jan.isdigit() and len(jan) in (8, 12, 13):
 
-        st.success("✅ JANコードを確認しました")
+        st.success("✅ JANコード確認OK")
 
         product = get_product_info(jan)
 
@@ -209,11 +202,7 @@ if jan:
             image_url = product["image"]
 
             if image_url:
-
-                st.image(
-                    image_url,
-                    width=250
-                )
+                st.image(image_url, width=250)
 
             if name:
 
@@ -232,8 +221,8 @@ if jan:
         else:
 
             st.info(
-                "商品データベースでは商品情報を取得できませんでした。"
-                "JANコードで各サイトを検索できます。"
+                "商品情報を自動取得できませんでした。"
+                "JANコードで各サイトを検索します。"
             )
 
 
@@ -300,19 +289,19 @@ if jan:
 
 st.divider()
 
-st.header("💰 利益計算")
+st.header("💰 仕入れ・利益計算")
 
 
-purchase_price = st.number_input(
-    "仕入価格（円）",
+selling_price = st.number_input(
+    "想定販売価格（円）",
     min_value=0,
     value=0,
     step=100
 )
 
 
-selling_price = st.number_input(
-    "想定販売価格（円）",
+purchase_price = st.number_input(
+    "実際の仕入価格（円）",
     min_value=0,
     value=0,
     step=100
@@ -334,19 +323,73 @@ fee_rate = st.number_input(
 
 st.subheader("🚚 配送方法")
 
+
 shipping_options = {
-    "ネコポス": 210,
-    "ゆうパケット": 230,
-    "ゆうパケットポスト": 215,
-    "宅急便コンパクト": 450,
-    "ゆうパケットプラス": 455,
-    "宅急便 60サイズ": 750,
-    "宅急便 80サイズ": 850,
-    "宅急便 100サイズ": 1050,
-    "宅急便 120サイズ": 1200,
-    "宅急便 140サイズ": 1450,
-    "宅急便 160サイズ": 1700,
-    "その他・手入力": 0,
+
+    "ゆうパケットポストmini": {
+        "shipping": 160,
+        "material": 0
+    },
+
+    "ネコポス": {
+        "shipping": 210,
+        "material": 0
+    },
+
+    "ゆうパケットポスト": {
+        "shipping": 215,
+        "material": 0
+    },
+
+    "ゆうパケット": {
+        "shipping": 230,
+        "material": 0
+    },
+
+    "宅急便コンパクト": {
+        "shipping": 450,
+        "material": 70
+    },
+
+    "ゆうパケットプラス": {
+        "shipping": 455,
+        "material": 65
+    },
+
+    "宅急便 60サイズ": {
+        "shipping": 750,
+        "material": 0
+    },
+
+    "宅急便 80サイズ": {
+        "shipping": 850,
+        "material": 0
+    },
+
+    "宅急便 100サイズ": {
+        "shipping": 1050,
+        "material": 0
+    },
+
+    "宅急便 120サイズ": {
+        "shipping": 1200,
+        "material": 0
+    },
+
+    "宅急便 140サイズ": {
+        "shipping": 1450,
+        "material": 0
+    },
+
+    "宅急便 160サイズ": {
+        "shipping": 1700,
+        "material": 0
+    },
+
+    "その他・手入力": {
+        "shipping": 0,
+        "material": 0
+    }
 }
 
 
@@ -365,19 +408,68 @@ if shipping_method == "その他・手入力":
         step=10
     )
 
+    material_cost = st.number_input(
+        "梱包資材代（円）",
+        min_value=0,
+        value=0,
+        step=10
+    )
+
 else:
 
-    shipping_cost = shipping_options[
-        shipping_method
-    ]
+    shipping_cost = (
+        shipping_options[shipping_method]["shipping"]
+    )
 
-    st.write(
-        f"送料：**{shipping_cost:,}円**"
+    material_cost = (
+        shipping_options[shipping_method]["material"]
     )
 
 
+total_shipping_cost = (
+    shipping_cost
+    + material_cost
+)
+
+
+st.write(
+    f"送料：**{shipping_cost:,}円**"
+)
+
+st.write(
+    f"専用資材等：**{material_cost:,}円**"
+)
+
+st.write(
+    f"配送関連合計：**{total_shipping_cost:,}円**"
+)
+
+
 # =========================
-# 利益計算結果
+# 仕入れ基準
+# =========================
+
+st.subheader("🎯 仕入れ基準")
+
+
+target_profit = st.number_input(
+    "最低欲しい利益（円）",
+    min_value=0,
+    value=1500,
+    step=100
+)
+
+
+target_roi = st.number_input(
+    "最低ROI（％）",
+    min_value=0.0,
+    value=30.0,
+    step=5.0
+)
+
+
+# =========================
+# 仕入上限価格
 # =========================
 
 if selling_price > 0:
@@ -388,12 +480,87 @@ if selling_price > 0:
         / 100
     )
 
+
+    # -------------------------
+    # 利益基準から計算
+    # -------------------------
+
+    max_purchase_profit = (
+        selling_price
+        - fee
+        - total_shipping_cost
+        - target_profit
+    )
+
+
+    # -------------------------
+    # ROI基準から計算
+    #
+    # ROI =
+    # 利益 ÷ 仕入価格 × 100
+    # -------------------------
+
+    available_before_purchase = (
+        selling_price
+        - fee
+        - total_shipping_cost
+    )
+
+
+    if target_roi > 0:
+
+        max_purchase_roi = (
+            available_before_purchase
+            / (1 + target_roi / 100)
+        )
+
+    else:
+
+        max_purchase_roi = (
+            available_before_purchase
+        )
+
+
+    # 両方の条件を満たす安い方
+    max_purchase_price = min(
+        max_purchase_profit,
+        max_purchase_roi
+    )
+
+
+    max_purchase_price = max(
+        0,
+        int(max_purchase_price)
+    )
+
+
+    st.subheader("🏷️ 仕入上限価格")
+
+
+    st.metric(
+        "この金額以下なら仕入れ基準クリア",
+        f"{max_purchase_price:,}円"
+    )
+
+
+    st.caption(
+        f"最低利益 {target_profit:,}円・"
+        f"最低ROI {target_roi:.1f}% の"
+        "両方を満たす目安です。"
+    )
+
+
+    # =========================
+    # 実際の利益
+    # =========================
+
     profit = (
         selling_price
         - purchase_price
         - fee
-        - shipping_cost
+        - total_shipping_cost
     )
+
 
     if purchase_price > 0:
 
@@ -417,6 +584,7 @@ if selling_price > 0:
 
     st.subheader("📊 計算結果")
 
+
     st.write(
         f"販売価格：{selling_price:,}円"
     )
@@ -430,7 +598,7 @@ if selling_price > 0:
     )
 
     st.write(
-        f"送料：{shipping_cost:,}円"
+        f"配送関連費：{total_shipping_cost:,}円"
     )
 
 
@@ -439,10 +607,12 @@ if selling_price > 0:
         f"{profit:,}円"
     )
 
+
     st.metric(
         "📈 ROI",
         f"{roi:.1f}%"
     )
+
 
     st.metric(
         "📊 売上利益率",
@@ -456,23 +626,50 @@ if selling_price > 0:
 
     st.subheader("🚦 仕入れ判定")
 
-    if profit >= 1500 and roi >= 30:
+
+    if purchase_price == 0:
+
+        st.info(
+            "仕入価格を入力すると"
+            "仕入れ判定が表示されます。"
+        )
+
+
+    elif (
+        profit >= target_profit
+        and roi >= target_roi
+    ):
 
         st.success(
-            "🟢 仕入れ候補\n\n"
-            "利益1,500円以上・ROI30%以上"
+            "🟢 仕入れ基準クリア"
         )
 
-    elif profit >= 1000 and roi >= 20:
-
-        st.warning(
-            "🟡 要検討\n\n"
-            "利益は出ていますが慎重に確認してください。"
+        difference = (
+            max_purchase_price
+            - purchase_price
         )
+
+        st.write(
+            f"仕入上限より **{difference:,}円安く** "
+            "仕入れできます。"
+        )
+
 
     else:
 
         st.error(
-            "🔴 見送り候補\n\n"
-            "利益またはROIが基準未満です。"
+            "🔴 見送り候補"
+        )
+
+        over_price = (
+            purchase_price
+            - max_purchase_price
+        )
+
+        if over_price > 0:
+
+            st.write(
+                f"仕入基準を満たすには、"
+                f"あと **{over_price:,}円** "
+                "安く仕入れる必要があります。"
             )
