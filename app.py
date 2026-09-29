@@ -34,7 +34,7 @@ if "candidates" not in st.session_state:
 
 
 # ==================================================
-# 商品名を検索しやすくする
+# 商品名クリーニング
 # ==================================================
 def clean_product_name(name):
 
@@ -190,7 +190,7 @@ def search_yahoo_by_jan(jan):
 
 # ==================================================
 # 楽天市場API
-# Referer対応版
+# Referer + Origin 対応
 # ==================================================
 def search_rakuten(keyword):
 
@@ -227,13 +227,16 @@ def search_rakuten(keyword):
         "availability": 1,
     }
 
-    # ★今回の重要な修正部分
-    # 楽天Developersに登録したStreamlitサイトを送る
+    # ★楽天にWebアプリのアクセス元を通知
     headers = {
         "Referer": (
             "https://sedori-research-ai-"
             "j5x65mktg58sbwrcvwackx.streamlit.app/"
-        )
+        ),
+        "Origin": (
+            "https://sedori-research-ai-"
+            "j5x65mktg58sbwrcvwackx.streamlit.app"
+        ),
     }
 
     try:
@@ -249,7 +252,7 @@ def search_rakuten(keyword):
 
             body = response.text
 
-            # APIキーなどが画面に出ないようにする
+            # 秘密情報を画面に表示しない
             body = body.replace(
                 access_key,
                 "[ACCESS_KEY]"
@@ -302,32 +305,12 @@ def search_rakuten(keyword):
                 continue
 
             cleaned_items.append({
-                "name": item.get(
-                    "itemName",
-                    ""
-                ),
-
+                "name": item.get("itemName", ""),
                 "price": price,
-
-                "url": item.get(
-                    "itemUrl",
-                    ""
-                ),
-
-                "shop": item.get(
-                    "shopName",
-                    ""
-                ),
-
-                "review_count": item.get(
-                    "reviewCount",
-                    0
-                ),
-
-                "review_average": item.get(
-                    "reviewAverage",
-                    0
-                ),
+                "url": item.get("itemUrl", ""),
+                "shop": item.get("shopName", ""),
+                "review_count": item.get("reviewCount", 0),
+                "review_average": item.get("reviewAverage", 0),
             })
 
         cleaned_items.sort(
@@ -344,11 +327,9 @@ def search_rakuten(keyword):
         return cleaned_items, None
 
     except requests.exceptions.Timeout:
-
         return None, "楽天APIがタイムアウトしました。"
 
     except Exception as e:
-
         return None, f"楽天検索エラー：{e}"
 
 
@@ -373,9 +354,7 @@ if camera is not None:
             st.session_state.jan = detected_jan
             st.session_state.product_name = ""
 
-        st.success(
-            f"JAN：{detected_jan}"
-        )
+        st.success(f"JAN：{detected_jan}")
 
     else:
 
@@ -386,7 +365,7 @@ if camera is not None:
 
 
 # ==================================================
-# JAN手入力
+# JAN入力
 # ==================================================
 jan = st.text_input(
     "JANコード",
@@ -402,7 +381,7 @@ if jan != st.session_state.jan:
 
 
 # ==================================================
-# 2. Yahoo!から商品を特定
+# 2. Yahoo! 商品情報
 # ==================================================
 product = None
 
@@ -410,35 +389,23 @@ if jan:
 
     if not jan.isdigit():
 
-        st.error(
-            "JANコードは数字で入力してください。"
-        )
+        st.error("JANコードは数字で入力してください。")
 
     elif len(jan) not in [8, 12, 13]:
 
-        st.warning(
-            "JANコードの桁数を確認してください。"
-        )
+        st.warning("JANコードの桁数を確認してください。")
 
     else:
 
-        with st.spinner(
-            "Yahoo!から商品を特定中..."
-        ):
+        with st.spinner("Yahoo!から商品を特定中..."):
 
-            product, yahoo_error = (
-                search_yahoo_by_jan(jan)
-            )
+            product, yahoo_error = search_yahoo_by_jan(jan)
 
         if product:
 
-            st.success(
-                "✅ 商品を特定しました"
-            )
+            st.success("✅ 商品を特定しました")
 
-            st.subheader(
-                "🏷️ 2. 商品情報"
-            )
+            st.subheader("🏷️ 2. 商品情報")
 
             if product["image"]:
 
@@ -488,23 +455,15 @@ if jan:
                     )
                 )
 
-            with st.expander(
-                "Yahoo!価格一覧"
-            ):
+            with st.expander("Yahoo!価格一覧"):
 
                 for hit in product["results"][:10]:
 
-                    price = hit.get(
-                        "price",
-                        0
-                    )
+                    price = hit.get("price", 0)
 
                     shop = (
                         hit.get("seller") or {}
-                    ).get(
-                        "name",
-                        ""
-                    )
+                    ).get("name", "")
 
                     st.write(
                         f"¥{price:,}｜{shop}"
@@ -512,13 +471,11 @@ if jan:
 
         else:
 
-            st.warning(
-                yahoo_error
-            )
+            st.warning(yahoo_error)
 
 
 # ==================================================
-# 検索用商品名
+# 検索商品名
 # ==================================================
 product_name = st.text_input(
     "検索に使う商品名・型番",
@@ -547,9 +504,7 @@ if search_word:
     ):
 
         rakuten_items, rakuten_error = (
-            search_rakuten(
-                search_word
-            )
+            search_rakuten(search_word)
         )
 
     if rakuten_items:
@@ -559,9 +514,7 @@ if search_word:
             for item in rakuten_items
         ]
 
-        rakuten_min = min(
-            prices
-        )
+        rakuten_min = min(prices)
 
         st.success(
             "✅ 楽天API接続成功"
@@ -622,7 +575,7 @@ if search_word:
 
 
 # ==================================================
-# 4. 各市場への検索
+# 4. 他市場
 # ==================================================
 if search_word:
 
@@ -630,9 +583,7 @@ if search_word:
         "🔎 4. 相場を確認"
     )
 
-    encoded = quote(
-        search_word
-    )
+    encoded = quote(search_word)
 
     mercari_url = (
         "https://jp.mercari.com/search"
@@ -663,7 +614,7 @@ if search_word:
     st.caption(
         "メルカリでは"
         "「絞り込み → 販売状況 → 売り切れ」"
-        "にすると実際の売却相場を確認できます。"
+        "で成約相場を確認してください。"
     )
 
     st.link_button(
@@ -728,9 +679,7 @@ shipping_options = {
 
 shipping_method = st.selectbox(
     "配送方法",
-    list(
-        shipping_options.keys()
-    ),
+    list(shipping_options.keys()),
     index=6
 )
 
@@ -746,11 +695,9 @@ if shipping_method == "その他・手入力":
 
 else:
 
-    shipping = (
-        shipping_options[
-            shipping_method
-        ]
-    )
+    shipping = shipping_options[
+        shipping_method
+    ]
 
     st.write(
         f"送料：**¥{shipping:,}**"
@@ -805,7 +752,7 @@ minimum_roi = st.number_input(
 
 
 # ==================================================
-# 利益計算
+# 計算
 # ==================================================
 fee = (
     selling_price
@@ -913,13 +860,11 @@ st.caption(
 
 
 profit_ok = (
-    profit
-    >= minimum_profit
+    profit >= minimum_profit
 )
 
 roi_ok = (
-    roi
-    >= minimum_roi
+    roi >= minimum_roi
 )
 
 
@@ -974,7 +919,7 @@ elif purchase_price > max_purchase:
 
 
 # ==================================================
-# 仕入れ候補保存
+# 候補保存
 # ==================================================
 if st.button(
     "⭐ この商品を仕入れ候補に保存",
@@ -1012,4 +957,4 @@ if st.session_state.candidates:
     st.dataframe(
         st.session_state.candidates,
         use_container_width=True
-        )
+    )
