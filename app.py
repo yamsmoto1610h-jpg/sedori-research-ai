@@ -4,24 +4,31 @@ from urllib.parse import quote
 from PIL import Image, ImageEnhance, ImageOps
 from pyzbar.pyzbar import decode
 
+
+# =========================
+# 基本設定
+# =========================
+
 st.set_page_config(
     page_title="せどりリサーチAI",
     page_icon="🔍"
 )
 
 st.title("🔍 せどりリサーチAI")
-st.header("📦 商品検索")
+st.caption("バーコードから相場検索・利益計算まで")
 
-# -------------------------
+
+# =========================
 # JANコード保存
-# -------------------------
+# =========================
 
 if "jan" not in st.session_state:
     st.session_state.jan = ""
 
-# -------------------------
-# バーコード読み取り関数
-# -------------------------
+
+# =========================
+# バーコード読み取り
+# =========================
 
 def read_barcode(image):
 
@@ -66,7 +73,7 @@ def read_barcode(image):
 
                 try:
                     code = result.data.decode("utf-8")
-                except:
+                except Exception:
                     continue
 
                 if code.isdigit() and len(code) in (8, 12, 13):
@@ -75,9 +82,9 @@ def read_barcode(image):
     return None
 
 
-# -------------------------
+# =========================
 # 商品情報取得
-# -------------------------
+# =========================
 
 @st.cache_data(ttl=3600)
 def get_product_info(jan):
@@ -123,13 +130,15 @@ def get_product_info(jan):
             "image": image_url
         }
 
-    except:
+    except Exception:
         return None
 
 
-# -------------------------
-# バーコード撮影
-# -------------------------
+# =========================
+# 商品検索
+# =========================
+
+st.header("📦 商品検索")
 
 st.subheader("📷 バーコード撮影")
 
@@ -162,9 +171,9 @@ if camera_image is not None:
         )
 
 
-# -------------------------
+# =========================
 # JAN入力
-# -------------------------
+# =========================
 
 st.subheader("🔢 JANコード")
 
@@ -177,9 +186,9 @@ jan = st.text_input(
 jan = jan.strip()
 
 
-# -------------------------
-# 商品検索
-# -------------------------
+# =========================
+# JAN検索
+# =========================
 
 if jan:
 
@@ -187,11 +196,11 @@ if jan:
 
         st.success("✅ JANコードを確認しました")
 
-        st.subheader("🔎 商品情報")
-
         product = get_product_info(jan)
 
         search_word = jan
+
+        st.subheader("🔎 商品情報")
 
         if product:
 
@@ -223,19 +232,24 @@ if jan:
         else:
 
             st.info(
-                "この商品は無料の商品データベースでは"
-                "見つかりませんでした。"
+                "商品データベースでは商品情報を取得できませんでした。"
                 "JANコードで各サイトを検索できます。"
             )
 
-        # -------------------------
-        # 各サイト検索
-        # -------------------------
+
+        # =========================
+        # 相場検索
+        # =========================
 
         st.subheader("🛒 相場を調べる")
 
         amazon_url = (
             "https://www.amazon.co.jp/s?k="
+            + quote(search_word)
+        )
+
+        mercari_url = (
+            "https://jp.mercari.com/search?keyword="
             + quote(search_word)
         )
 
@@ -249,29 +263,28 @@ if jan:
             + quote(search_word)
         )
 
-        mercari_url = (
-            "https://jp.mercari.com/search?keyword="
-            + quote(search_word)
-        )
-
         st.link_button(
             "🟠 Amazonで検索",
-            amazon_url
-        )
-
-        st.link_button(
-            "🔴 楽天市場で検索",
-            rakuten_url
-        )
-
-        st.link_button(
-            "🟣 Yahoo!ショッピングで検索",
-            yahoo_url
+            amazon_url,
+            use_container_width=True
         )
 
         st.link_button(
             "🔴 メルカリで検索",
-            mercari_url
+            mercari_url,
+            use_container_width=True
+        )
+
+        st.link_button(
+            "🔴 楽天市場で検索",
+            rakuten_url,
+            use_container_width=True
+        )
+
+        st.link_button(
+            "🟣 Yahoo!ショッピングで検索",
+            yahoo_url,
+            use_container_width=True
         )
 
     else:
@@ -279,12 +292,16 @@ if jan:
         st.error(
             "JANコードは8桁・12桁・13桁の数字で入力してください。"
         )
-# -------------------------
+
+
+# =========================
 # 利益計算
-# -------------------------
+# =========================
 
 st.divider()
+
 st.header("💰 利益計算")
+
 
 purchase_price = st.number_input(
     "仕入価格（円）",
@@ -293,12 +310,14 @@ purchase_price = st.number_input(
     step=100
 )
 
+
 selling_price = st.number_input(
     "想定販売価格（円）",
     min_value=0,
     value=0,
     step=100
 )
+
 
 fee_rate = st.number_input(
     "販売手数料（％）",
@@ -308,16 +327,66 @@ fee_rate = st.number_input(
     step=0.5
 )
 
-shipping_cost = st.number_input(
-    "送料（円）",
-    min_value=0,
-    value=750,
-    step=50
+
+# =========================
+# 配送方法
+# =========================
+
+st.subheader("🚚 配送方法")
+
+shipping_options = {
+    "ネコポス": 210,
+    "ゆうパケット": 230,
+    "ゆうパケットポスト": 215,
+    "宅急便コンパクト": 450,
+    "ゆうパケットプラス": 455,
+    "宅急便 60サイズ": 750,
+    "宅急便 80サイズ": 850,
+    "宅急便 100サイズ": 1050,
+    "宅急便 120サイズ": 1200,
+    "宅急便 140サイズ": 1450,
+    "宅急便 160サイズ": 1700,
+    "その他・手入力": 0,
+}
+
+
+shipping_method = st.selectbox(
+    "配送方法を選択",
+    list(shipping_options.keys())
 )
+
+
+if shipping_method == "その他・手入力":
+
+    shipping_cost = st.number_input(
+        "送料（円）",
+        min_value=0,
+        value=0,
+        step=10
+    )
+
+else:
+
+    shipping_cost = shipping_options[
+        shipping_method
+    ]
+
+    st.write(
+        f"送料：**{shipping_cost:,}円**"
+    )
+
+
+# =========================
+# 利益計算結果
+# =========================
 
 if selling_price > 0:
 
-    fee = int(selling_price * fee_rate / 100)
+    fee = int(
+        selling_price
+        * fee_rate
+        / 100
+    )
 
     profit = (
         selling_price
@@ -327,53 +396,83 @@ if selling_price > 0:
     )
 
     if purchase_price > 0:
-        roi = profit / purchase_price * 100
+
+        roi = (
+            profit
+            / purchase_price
+            * 100
+        )
+
     else:
+
         roi = 0
 
-    if selling_price > 0:
-        profit_margin = profit / selling_price * 100
-    else:
-        profit_margin = 0
+
+    profit_margin = (
+        profit
+        / selling_price
+        * 100
+    )
+
 
     st.subheader("📊 計算結果")
 
-    st.write(f"販売価格：{selling_price:,}円")
-    st.write(f"仕入価格：{purchase_price:,}円")
-    st.write(f"販売手数料：{fee:,}円")
-    st.write(f"送料：{shipping_cost:,}円")
+    st.write(
+        f"販売価格：{selling_price:,}円"
+    )
+
+    st.write(
+        f"仕入価格：{purchase_price:,}円"
+    )
+
+    st.write(
+        f"販売手数料：{fee:,}円"
+    )
+
+    st.write(
+        f"送料：{shipping_cost:,}円"
+    )
+
 
     st.metric(
-        "想定利益",
+        "💰 想定利益",
         f"{profit:,}円"
     )
 
     st.metric(
-        "ROI（仕入額に対する利益率）",
+        "📈 ROI",
         f"{roi:.1f}%"
     )
 
     st.metric(
-        "売上利益率",
+        "📊 売上利益率",
         f"{profit_margin:.1f}%"
     )
+
+
+    # =========================
+    # 仕入れ判定
+    # =========================
 
     st.subheader("🚦 仕入れ判定")
 
     if profit >= 1500 and roi >= 30:
 
         st.success(
-            "🟢 仕入れ候補：利益1,500円以上・ROI30%以上"
+            "🟢 仕入れ候補\n\n"
+            "利益1,500円以上・ROI30%以上"
         )
 
     elif profit >= 1000 and roi >= 20:
 
         st.warning(
-            "🟡 要検討：利益は出ていますが慎重に確認"
+            "🟡 要検討\n\n"
+            "利益は出ていますが慎重に確認してください。"
         )
 
     else:
 
         st.error(
-            "🔴 見送り候補：利益またはROIが基準未満"
-        )
+            "🔴 見送り候補\n\n"
+            "利益またはROIが基準未満です。"
+            )
