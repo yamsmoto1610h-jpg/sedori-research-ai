@@ -34,7 +34,7 @@ if "candidates" not in st.session_state:
 
 
 # ==================================================
-# 商品名クリーニング
+# 商品名を検索しやすくする
 # ==================================================
 def clean_product_name(name):
 
@@ -118,10 +118,7 @@ def search_yahoo_by_jan(jan):
     except Exception:
         return None, "Yahoo! Client IDがSecretsにありません。"
 
-    url = (
-        "https://shopping.yahooapis.jp/"
-        "ShoppingWebService/V3/itemSearch"
-    )
+    url = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
 
     params = {
         "appid": app_id,
@@ -191,18 +188,16 @@ def search_yahoo_by_jan(jan):
 
 
 # ==================================================
-# 楽天API
-# 商品名 → 楽天市場検索
+# 楽天市場API
+# 商品名 → 楽天価格
 # ==================================================
 def search_rakuten(keyword):
 
     try:
-
         app_id = st.secrets["RAKUTEN_APP_ID"]
         access_key = st.secrets["RAKUTEN_ACCESS_KEY"]
 
     except Exception:
-
         return None, "楽天のApplication ID / Access KeyがSecretsにありません。"
 
     url = (
@@ -210,15 +205,21 @@ def search_rakuten(keyword):
         "ichibams/api/IchibaItem/Search/20260701"
     )
 
+    # Application IDはこちら
     params = {
         "applicationId": app_id,
-        "accessKey": access_key,
         "keyword": keyword,
         "format": "json",
+        "formatVersion": 2,
         "hits": 10,
         "sort": "+itemPrice",
         "availability": 1,
         "imageFlag": 1,
+    }
+
+    # Access Keyはこちら
+    headers = {
+        "accessKey": access_key
     }
 
     try:
@@ -226,18 +227,23 @@ def search_rakuten(keyword):
         response = requests.get(
             url,
             params=params,
+            headers=headers,
             timeout=10
         )
 
         if response.status_code != 200:
 
             try:
-                detail = response.json().get(
-                    "error_description",
-                    ""
+                error_data = response.json()
+
+                detail = (
+                    error_data.get("error_description")
+                    or error_data.get("error")
+                    or ""
                 )
+
             except Exception:
-                detail = ""
+                detail = response.text[:200]
 
             return (
                 None,
@@ -246,7 +252,8 @@ def search_rakuten(keyword):
 
         data = response.json()
 
-        items = data.get("Items", [])
+        # formatVersion=2
+        items = data.get("Items") or data.get("items") or []
 
         if not items:
             return None, "楽天市場では該当商品が見つかりませんでした。"
@@ -255,30 +262,46 @@ def search_rakuten(keyword):
 
         for entry in items:
 
-            # APIバージョン差異に対応
-            item = entry.get("Item", entry)
+            # Version 1 / Version 2の両方に対応
+            item = (
+                entry.get("Item")
+                or entry.get("item")
+                or entry
+            )
+
+            try:
+                price = int(item.get("itemPrice", 0))
+            except Exception:
+                price = 0
 
             cleaned_items.append({
                 "name": item.get("itemName", ""),
-                "price": item.get("itemPrice", 0),
+                "price": price,
                 "url": item.get("itemUrl", ""),
                 "shop": item.get("shopName", ""),
-                "image": item.get("mediumImageUrls", []),
+                "review_count": item.get("reviewCount", 0),
+                "review_average": item.get("reviewAverage", 0),
             })
 
-        cleaned_items = sorted(
-            cleaned_items,
-            key=lambda x: x["price"] if x["price"] else 999999999
+        cleaned_items = [
+            item
+            for item in cleaned_items
+            if item["price"] > 0
+        ]
+
+        cleaned_items.sort(
+            key=lambda x: x["price"]
         )
+
+        if not cleaned_items:
+            return None, "楽天市場で有効な価格情報を取得できませんでした。"
 
         return cleaned_items, None
 
     except requests.exceptions.Timeout:
-
         return None, "楽天APIがタイムアウトしました。"
 
     except Exception as e:
-
         return None, f"楽天検索エラー：{e}"
 
 
@@ -300,7 +323,6 @@ if camera is not None:
     if detected_jan:
 
         if detected_jan != st.session_state.jan:
-
             st.session_state.jan = detected_jan
             st.session_state.product_name = ""
 
@@ -315,7 +337,7 @@ if camera is not None:
 
 
 # ==================================================
-# JAN入力
+# JAN手入力
 # ==================================================
 jan = st.text_input(
     "JANコード",
@@ -325,18 +347,15 @@ jan = st.text_input(
 
 jan = jan.strip()
 
-
 if jan != st.session_state.jan:
-
     st.session_state.jan = jan
     st.session_state.product_name = ""
 
 
 # ==================================================
-# 2. Yahoo! 商品情報
+# 2. Yahoo!商品情報
 # ==================================================
 product = None
-
 
 if jan:
 
@@ -361,7 +380,6 @@ if jan:
             st.subheader("🏷️ 2. 商品情報")
 
             if product["image"]:
-
                 st.image(
                     product["image"],
                     width=220
@@ -372,7 +390,6 @@ if jan:
             )
 
             if product["brand"]:
-
                 st.write(
                     f"**ブランド：** {product['brand']}"
                 )
@@ -387,13 +404,11 @@ if jan:
             )
 
             if product["shop"]:
-
                 st.caption(
                     f"Yahoo!ショップ：{product['shop']}"
                 )
 
             if product["url"]:
-
                 st.link_button(
                     "Yahoo!商品ページ",
                     product["url"],
@@ -439,7 +454,7 @@ search_word = product_name.strip() or jan
 
 
 # ==================================================
-# 3. 楽天価格を自動取得
+# 3. 楽天市場
 # ==================================================
 if search_word:
 
@@ -454,30 +469,29 @@ if search_word:
     if rakuten_items:
 
         prices = [
-            x["price"]
-            for x in rakuten_items
-            if x["price"] > 0
+            item["price"]
+            for item in rakuten_items
         ]
 
-        if prices:
+        rakuten_min = min(prices)
 
-            rakuten_min = min(prices)
+        st.success("楽天API接続成功")
 
-            st.metric(
-                "楽天 最安参考価格",
-                f"¥{rakuten_min:,}"
-            )
+        st.metric(
+            "楽天 最安参考価格",
+            f"¥{rakuten_min:,}"
+        )
 
         st.caption(
-            f"楽天市場で上位{len(rakuten_items)}件を取得"
+            f"楽天市場から{len(rakuten_items)}件取得"
         )
 
         with st.expander("楽天の価格一覧を見る"):
 
             for item in rakuten_items:
 
-                st.write(
-                    f"**¥{item['price']:,}**"
+                st.markdown(
+                    f"### ¥{item['price']:,}"
                 )
 
                 st.write(
@@ -487,6 +501,14 @@ if search_word:
                 if item["shop"]:
                     st.caption(
                         f"ショップ：{item['shop']}"
+                    )
+
+                if item["review_count"]:
+
+                    st.caption(
+                        f"レビュー："
+                        f"{item['review_average']} "
+                        f"({item['review_count']}件)"
                     )
 
                 if item["url"]:
@@ -504,7 +526,7 @@ if search_word:
 
 
 # ==================================================
-# 4. 他市場
+# 4. 他市場へのリンク
 # ==================================================
 if search_word:
 
@@ -540,7 +562,7 @@ if search_word:
 
     st.caption(
         "メルカリでは「絞り込み → 販売状況 → 売り切れ」"
-        "で成約相場を確認してください。"
+        "で実際に売れた価格を確認してください。"
     )
 
     st.link_button(
@@ -677,7 +699,6 @@ minimum_roi = st.number_input(
 # ==================================================
 fee = selling_price * fee_rate / 100
 
-
 profit = (
     selling_price
     - purchase_price
@@ -732,7 +753,7 @@ max_purchase = math.floor(
 
 
 # ==================================================
-# 6. 判定
+# 6. 仕入れ判定
 # ==================================================
 st.subheader("📊 6. 仕入れ判定")
 
@@ -821,7 +842,7 @@ elif purchase_price > max_purchase:
 
 
 # ==================================================
-# 保存
+# 仕入れ候補保存
 # ==================================================
 if st.button(
     "⭐ この商品を仕入れ候補に保存",
@@ -857,4 +878,4 @@ if st.session_state.candidates:
     st.dataframe(
         st.session_state.candidates,
         use_container_width=True
-        )
+)
