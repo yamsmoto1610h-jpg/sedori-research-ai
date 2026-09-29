@@ -279,3 +279,101 @@ if jan:
         st.error(
             "JANコードは8桁・12桁・13桁の数字で入力してください。"
         )
+# -------------------------
+# 利益計算
+# -------------------------
+
+st.divider()
+st.header("💰 利益計算")
+
+purchase_price = st.number_input(
+    "仕入価格（円）",
+    min_value=0,
+    value=0,
+    step=100
+)
+
+selling_price = st.number_input(
+    "想定販売価格（円）",
+    min_value=0,
+    value=0,
+    step=100
+)
+
+fee_rate = st.number_input(
+    "販売手数料（％）",
+    min_value=0.0,
+    max_value=100.0,
+    value=10.0,
+    step=0.5
+)
+
+shipping_cost = st.number_input(
+    "送料（円）",
+    min_value=0,
+    value=750,
+    step=50
+)
+
+if selling_price > 0:
+
+    fee = int(selling_price * fee_rate / 100)
+
+    profit = (
+        selling_price
+        - purchase_price
+        - fee
+        - shipping_cost
+    )
+
+    if purchase_price > 0:
+        roi = profit / purchase_price * 100
+    else:
+        roi = 0
+
+    if selling_price > 0:
+        profit_margin = profit / selling_price * 100
+    else:
+        profit_margin = 0
+
+    st.subheader("📊 計算結果")
+
+    st.write(f"販売価格：{selling_price:,}円")
+    st.write(f"仕入価格：{purchase_price:,}円")
+    st.write(f"販売手数料：{fee:,}円")
+    st.write(f"送料：{shipping_cost:,}円")
+
+    st.metric(
+        "想定利益",
+        f"{profit:,}円"
+    )
+
+    st.metric(
+        "ROI（仕入額に対する利益率）",
+        f"{roi:.1f}%"
+    )
+
+    st.metric(
+        "売上利益率",
+        f"{profit_margin:.1f}%"
+    )
+
+    st.subheader("🚦 仕入れ判定")
+
+    if profit >= 1500 and roi >= 30:
+
+        st.success(
+            "🟢 仕入れ候補：利益1,500円以上・ROI30%以上"
+        )
+
+    elif profit >= 1000 and roi >= 20:
+
+        st.warning(
+            "🟡 要検討：利益は出ていますが慎重に確認"
+        )
+
+    else:
+
+        st.error(
+            "🔴 見送り候補：利益またはROIが基準未満"
+        )
