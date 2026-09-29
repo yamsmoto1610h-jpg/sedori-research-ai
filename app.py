@@ -9,20 +9,20 @@ st.set_page_config(
 st.title("🔍 せどりリサーチAI")
 
 # -------------------------
-# JANコード検索
+# 商品検索
 # -------------------------
 
 st.header("📦 商品検索")
 
 jan = st.text_input(
     "JANコードを入力",
-    placeholder="例：4901234567894"
+    placeholder="例：4902430912526"
 )
 
 if jan:
     jan = jan.strip()
 
-    if jan.isdigit() and len(jan) in [8, 12, 13]:
+    if jan.isdigit() and len(jan) in (8, 12, 13):
         st.success("✅ JANコードを入力しました")
 
         amazon_url = (
@@ -35,9 +35,19 @@ if jan:
             + quote(jan)
         )
 
+        mercari_url = (
+            "https://jp.mercari.com/search?keyword="
+            + quote(jan)
+        )
+
         st.link_button(
             "🛒 Amazonで検索",
             amazon_url
+        )
+
+        st.link_button(
+            "🔴 メルカリで検索",
+            mercari_url
         )
 
         st.link_button(
@@ -47,7 +57,7 @@ if jan:
 
     else:
         st.warning(
-            "⚠️ JANコードを数字で入力してください"
+            "⚠️ JANコードを8桁・12桁・13桁の数字で入力してください"
         )
 
 st.divider()
