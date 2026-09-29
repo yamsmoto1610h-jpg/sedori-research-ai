@@ -1,5 +1,7 @@
 import streamlit as st
 from urllib.parse import quote
+from PIL import Image
+from pyzbar.pyzbar import decode
 
 st.set_page_config(
     page_title="せどりリサーチAI",
@@ -9,33 +11,69 @@ st.set_page_config(
 st.title("🔍 せどりリサーチAI")
 
 # -------------------------
-# 商品検索
+# JANコード保存
+# -------------------------
+
+if "jan" not in st.session_state:
+    st.session_state.jan = ""
+
+# -------------------------
+# バーコード撮影
 # -------------------------
 
 st.header("📦 商品検索")
 
 st.subheader("📷 バーコード撮影")
-st.write("商品のJANバーコードをカメラで撮影できます。")
 
-camera_image = st.camera_input("バーコードを撮影")
+st.write(
+    "商品のJANバーコードをカメラで撮影すると、"
+    "JANコードを自動で読み取ります。"
+)
+
+camera_image = st.camera_input(
+    "バーコードを撮影"
+)
 
 if camera_image is not None:
-    st.success("✅ バーコード画像を撮影しました")
-    st.info("次のアップデートで、この画像からJANコードを自動取得します。")
 
-st.divider()
+    image = Image.open(camera_image)
+
+    barcodes = decode(image)
+
+    if barcodes:
+
+        barcode = barcodes[0].data.decode("utf-8")
+
+        st.session_state.jan = barcode
+
+        st.success(
+            f"✅ JANコードを読み取りました：{barcode}"
+        )
+
+    else:
+
+        st.warning(
+            "⚠️ バーコードを読み取れませんでした。"
+            "バーコードを大きく、正面から撮影してください。"
+        )
+
+# -------------------------
+# JAN入力
+# -------------------------
 
 jan = st.text_input(
-    "JANコードを入力",
+    "JANコード",
+    value=st.session_state.jan,
     placeholder="例：4902430912526"
 )
 
 if jan:
+
     jan = jan.strip()
 
-    if jan.isdigit() and len(jan) in [8, 12, 13]:
+    if jan.isdigit() and len(jan) in (8, 12, 13):
 
-        st.success("✅ JANコードを入力しました")
+        st.success("✅ JANコードを認識しました")
 
         amazon_url = (
             "https://www.amazon.co.jp/s?k="
@@ -68,6 +106,7 @@ if jan:
         )
 
     else:
+
         st.warning(
             "⚠️ JANコードを8桁・12桁・13桁の数字で入力してください"
         )
@@ -127,24 +166,32 @@ if st.button("利益を計算する"):
 
     st.subheader("📊 計算結果")
 
-    col1, col2 = st.columns(2)
+    st.write(
+        f"販売手数料：{fee:,}円"
+    )
 
-    with col1:
-        st.metric(
-            "💰 想定利益",
-            f"{profit:,}円"
-        )
+    st.write(
+        f"送料：{shipping:,}円"
+    )
 
-    with col2:
-        st.metric(
-            "📈 ROI",
-            f"{roi:.1f}%"
-        )
+    st.metric(
+        "💰 想定利益",
+        f"{profit:,}円"
+    )
 
-    st.write(f"販売手数料：{fee:,}円")
-    st.write(f"送料：{shipping:,}円")
+    st.metric(
+        "📈 ROI",
+        f"{roi:.1f}%"
+    )
 
     if profit >= 1500 and roi >= 20:
-        st.success("🔥 仕入れ候補")
+
+        st.success(
+            "🔥 仕入れ候補"
+        )
+
     else:
-        st.warning("⚠️ 今回はスルー候補")
+
+        st.warning(
+            "⚠️ 今回はスルー候補"
+        )
