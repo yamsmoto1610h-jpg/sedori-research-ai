@@ -1,13 +1,62 @@
 import streamlit as st
+from urllib.parse import quote
 
 st.set_page_config(
-    page_title="せどり利益計算",
+    page_title="せどりリサーチAI",
     page_icon="🔍"
 )
 
-st.title("🔍 せどり利益計算")
+st.title("🔍 せどりリサーチAI")
 
-st.write("商品の仕入価格と販売価格を入力してください。")
+# -------------------------
+# JANコード検索
+# -------------------------
+
+st.header("📦 商品検索")
+
+jan = st.text_input(
+    "JANコードを入力",
+    placeholder="例：4901234567894"
+)
+
+if jan:
+    jan = jan.strip()
+
+    if jan.isdigit() and len(jan) in [8, 12, 13]:
+        st.success("✅ JANコードを入力しました")
+
+        amazon_url = (
+            "https://www.amazon.co.jp/s?k="
+            + quote(jan)
+        )
+
+        google_url = (
+            "https://www.google.com/search?q="
+            + quote(jan)
+        )
+
+        st.link_button(
+            "🛒 Amazonで検索",
+            amazon_url
+        )
+
+        st.link_button(
+            "🔎 Googleで検索",
+            google_url
+        )
+
+    else:
+        st.warning(
+            "⚠️ JANコードを数字で入力してください"
+        )
+
+st.divider()
+
+# -------------------------
+# 利益計算
+# -------------------------
+
+st.header("💰 利益計算")
 
 buy_price = st.number_input(
     "仕入価格（円）",
@@ -39,8 +88,15 @@ shipping = st.number_input(
 )
 
 if st.button("利益を計算する"):
+
     fee = int(sell_price * fee_rate / 100)
-    profit = sell_price - buy_price - fee - shipping
+
+    profit = (
+        sell_price
+        - buy_price
+        - fee
+        - shipping
+    )
 
     if buy_price > 0:
         roi = profit / buy_price * 100
@@ -48,11 +104,26 @@ if st.button("利益を計算する"):
         roi = 0
 
     st.subheader("📊 計算結果")
-    st.write(f"販売手数料：{fee:,}円")
-    st.write(f"送料：{shipping:,}円")
 
-    st.metric("💰 想定利益", f"{profit:,}円")
-    st.metric("📈 ROI", f"{roi:.1f}%")
+    st.write(
+        f"販売手数料：{fee:,}円"
+    )
+
+    st.write(
+        f"送料：{shipping:,}円"
+    )
+
+    st.metric(
+        "💰 想定利益",
+        f"{profit:,}円"
+    )
+
+    st.metric(
+        "📈 ROI",
+        f"{roi:.1f}%"
+    )
 
     if profit >= 1500 and roi >= 20:
-        st
+        st.success("🔥 仕入れ候補")
+    else:
+        st.warning("⚠️ 今回はスルー候補")
