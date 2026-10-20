@@ -15,8 +15,8 @@ try:
 except (ImportError, OSError):
     BARCODE_AVAILABLE = False
 
-st.set_page_config(page_title="せどりリサーチAI Ver.2.4", page_icon="🔍", layout="centered")
-st.title("🔍 せどりリサーチAI Ver.2.4")
+st.set_page_config(page_title="せどりリサーチAI Ver.2.5", page_icon="🔍", layout="centered")
+st.title("🔍 せどりリサーチAI Ver.2.5")
 st.caption("JAN検索 → 国内・海外の利益試算 → 仕入れ判定")
 
 for key, value in {"jan": "", "product_name": "", "candidates": []}.items():
@@ -99,6 +99,53 @@ def rakuten_search(keyword):
         return sorted(items, key=lambda x: x["price"]), None
     except Exception as e:
         return [], f"楽天検索に失敗しました: {type(e).__name__}"
+
+
+# eBay Browse API: 現在出品中の価格のみ。成約履歴ではありません。
+@st.cache_data(ttl=3000, show_spinner=False)
+def ebay_app_token(client_id, client_secret):
+    try:
+        response = requests.post(
+            "https://api.ebay.com/identity/v1/oauth2/token",
+            auth=(client_id, client_secret),
+            data={"grant_type": "client_credentials", "scope": "https://api.ebay.com/oauth/api_scope"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=15)
+        response.raise_for_status()
+        return response.json()["access_token"], None
+    except (requests.RequestException, KeyError, ValueError):
+        return None, "eBayの認証に失敗しました。APIキー・利用資格・通信状況を確認してください。"
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def ebay_active_search(keyword, client_id, client_secret):
+    token, err = ebay_app_token(client_id, client_secret)
+    if err:
+        return [], err
+    try:
+        response = requests.get(
+            "https://api.ebay.com/buy/browse/v1/item_summary/search",
+            params={"q": keyword, "limit": 30},
+            headers={"Authorization": f"Bearer {token}", "X-EBAY-C-MARKETPLACE-ID": "EBAY_US"},
+            timeout=20)
+        if response.status_code in (401, 403):
+            return [], "eBay APIへのアクセスが許可されていません。Production利用資格を確認してください。"
+        response.raise_for_status()
+        results = []
+        for item in response.json().get("itemSummaries", []):
+            price = item.get("price") or {}
+            if price.get("currency") != "USD":
+                continue
+            try:
+                amount = float(price.get("value", 0))
+            except (ValueError, TypeError):
+                continue
+            if amount > 0:
+                results.append({"title": item.get("title", ""), "price": amount,
+                                "url": item.get("itemWebUrl", ""),
+                                "condition": item.get("condition", "不明")})
+        return results, None
+    except (requests.RequestException, ValueError):
+        return [], "eBayの販売中商品を取得できませんでした。しばらくして再試行してください。"
 
 
 # ChromeのBarcodeDetectorを使う軽量なカスタムコンポーネント。
@@ -214,12 +261,45 @@ if mode.startswith("メルカリ"):
     breakdown = {"売上": revenue, "販売手数料": revenue * fee_rate / 100,
                  "国内送料": shipping, "梱包資材": materials}
 else:
-    st.info("eBayの成約相場・送料・関税は自動取得していません。各公式見積もりを確認して入力してください。")
+    st.info("eBay成約相場・送料・関税は自動取得していません。販売中価格のAPI検索は別機能です。")
     destination = st.selectbox("発送先", ["アメリカ", "カナダ", "イギリス", "ドイツ", "フランス", "オーストラリア", "その他"])
     origin = st.text_input("原産国（製造国。日本から発送＝日本製とは限りません）", placeholder="例: China")
     hs_code = st.text_input("HSコード（分かる場合）", placeholder="例: 該当する税番")
     shipping_term = st.selectbox("輸入費用の負担方式", ["DDP（原則売り手負担）", "DAP（原則買い手負担）", "不明"])
-    st.markdown("**eBay成約相場の確認（Ver.2.4）**")
+    st.markdown("**eBay販売中価格の自動検索（Ver.2.5）**")
+    st.caption("販売中の出品価格です。実際に売れた価格ではなく、送料・値引き・商品の状態も異なります。仕入れOKの根拠にしないでください。")
+    ebay_id = st.secrets.get("EBAY_CLIENT_ID", "")
+    ebay_secret = st.secrets.get("EBAY_CLIENT_SECRET", "")
+    if not ebay_id or not ebay_secret:
+        st.info("eBay APIは未接続です。Developer Programの利用資格とProductionキーが必要です。キーはStreamlit Secretsに設定してください。")
+        with st.expander("eBay APIの設定方法"):
+            st.code('EBAY_CLIENT_ID = "取得したClient ID"\nEBAY_CLIENT_SECRET = "取得したClient Secret"', language="toml")
+            st.caption("Streamlit Cloud → アプリのSettings → Secretsへ設定。GitHubにキーをアップロードしないでください。")
+            st.link_button("eBay Developers Program", "https://developer.ebay.com/", use_container_width=True)
+    elif not search_word:
+        st.info("先に商品名または検索キーワードを入力してください。")
+    else:
+        if st.button("eBay販売中価格をAPIで検索", key="v25_active_search"):
+            with st.spinner("eBayの販売中商品を検索中..."):
+                items, error = ebay_active_search(search_word, ebay_id, ebay_secret)
+            st.session_state["v25_active_results"] = {"keyword": search_word, "items": items, "error": error}
+        results = st.session_state.get("v25_active_results", {})
+        if results.get("keyword") == search_word:
+            if results.get("error"):
+                st.warning(results["error"])
+            elif results.get("items"):
+                from statistics import median as active_median
+                active_items = results["items"]
+                st.metric("販売中価格の中央値（USD）", f"${active_median(x['price'] for x in active_items):,.2f}")
+                st.caption(f"{len(active_items)}件の出品価格の中央値。別商品・仕様違いが混ざる可能性があります。成約相場ではありません。")
+                with st.expander("取得した出品一覧（タイトルを確認）"):
+                    for item in active_items:
+                        st.write(f"${item['price']:,.2f} / {item['condition']} / {item['title']}")
+                        if item["url"].startswith("https://"):
+                            st.link_button("eBayの商品ページ", item["url"])
+            else:
+                st.info("該当する販売中商品が見つかりませんでした。検索用商品名を調整してください。")
+    st.markdown("**eBay成約相場の確認（手入力）**")
     st.caption("売却済みの同一商品を確認し、商品価格（送料を除く）をUSDで入力してください。自動取得ではありません。状態・付属品・販売時期も比較してください。")
     if search_word:
         st.link_button("eBayの売却済み商品を開く", f"https://www.ebay.com/sch/i.html?_nkw={quote(search_word)}&LH_Sold=1&LH_Complete=1", use_container_width=True)
