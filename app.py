@@ -15,8 +15,8 @@ try:
 except (ImportError, OSError):
     BARCODE_AVAILABLE = False
 
-st.set_page_config(page_title="せどりリサーチAI Ver.2.3", page_icon="🔍", layout="centered")
-st.title("🔍 せどりリサーチAI Ver.2.3")
+st.set_page_config(page_title="せどりリサーチAI Ver.2.4", page_icon="🔍", layout="centered")
+st.title("🔍 せどりリサーチAI Ver.2.4")
 st.caption("JAN検索 → 国内・海外の利益試算 → 仕入れ判定")
 
 for key, value in {"jan": "", "product_name": "", "candidates": []}.items():
@@ -219,17 +219,44 @@ else:
     origin = st.text_input("原産国（製造国。日本から発送＝日本製とは限りません）", placeholder="例: China")
     hs_code = st.text_input("HSコード（分かる場合）", placeholder="例: 該当する税番")
     shipping_term = st.selectbox("輸入費用の負担方式", ["DDP（原則売り手負担）", "DAP（原則買い手負担）", "不明"])
-    usd_price = st.number_input("eBay商品価格（USD）", min_value=0.0, value=149.99, step=1.0)
+    st.markdown("**eBay成約相場の確認（Ver.2.4）**")
+    st.caption("売却済みの同一商品を確認し、商品価格（送料を除く）をUSDで入力してください。自動取得ではありません。状態・付属品・販売時期も比較してください。")
+    if search_word:
+        st.link_button("eBayの売却済み商品を開く", f"https://www.ebay.com/sch/i.html?_nkw={quote(search_word)}&LH_Sold=1&LH_Complete=1", use_container_width=True)
+    with st.expander("成約価格を入力して中央値を計算", expanded=False):
+        sold_prices = []
+        for i in range(1, 6):
+            price = st.number_input(f"成約例{i}：商品価格（USD、送料を除く）", min_value=0.0, value=0.0, step=1.0, key=f"v24_sold_{i}")
+            if price > 0:
+                sold_prices.append(price)
+        if sold_prices:
+            from statistics import median
+            sold_median = float(median(sold_prices))
+            st.metric("入力した成約価格の中央値", f"${sold_median:,.2f}")
+            st.caption(f"入力件数：{len(sold_prices)}件。少数例・別仕様の商品では相場を代表しません。")
+            if st.button("中央値をeBay販売価格へ反映", key="v24_apply_sold"):
+                st.session_state["v24_ebay_price"] = sold_median
+                st.rerun()
+        else:
+            st.info("成約例を1件以上入力すると中央値を表示します。")
+    if "v24_ebay_price" not in st.session_state:
+        st.session_state["v24_ebay_price"] = 149.99
+    usd_price = st.number_input("eBay商品価格（USD）", min_value=0.0, step=1.0, key="v24_ebay_price")
     usd_shipping_charged = st.number_input("購入者から受け取る送料（USD）", min_value=0.0, value=39.99, step=1.0)
     exchange = st.number_input("計算用為替レート（1 USD＝何円）", min_value=1.0, value=150.0, step=1.0)
     st.caption("為替は自動取得していません。実際の受取時の換算レートとは異なる場合があります。")
+    st.markdown("**梱包後の重量・サイズ**")
+    st.caption("JANで取得した商品名は梱包後の重量・寸法を保証しません。実測値、またはメーカー仕様に梱包材の余裕を加えた数値を入力してください。")
+    spec_query = quote((search_word or jan) + " 梱包サイズ 重量")
+    if search_word or jan:
+        st.link_button("商品重量・サイズをWebで調べる", f"https://www.google.com/search?q={spec_query}", use_container_width=True)
     weight = st.number_input("梱包後重量（kg）", min_value=0.0, value=1.0, step=0.1)
     a, b, c = st.columns(3)
     length = a.number_input("縦（cm）", min_value=0.0, value=40.0)
     width = b.number_input("横（cm）", min_value=0.0, value=30.0)
     height = c.number_input("高さ（cm）", min_value=0.0, value=20.0)
     st.caption(f"梱包サイズ: {length:g}×{width:g}×{height:g}cm / 実重量: {weight:g}kg。容積重量の計算方法は配送会社ごとに異なります。")
-    st.markdown("**国際送料の配送会社比較（Ver.2.3）**")
+    st.markdown("**国際送料の配送会社比較（Ver.2.4）**")
     st.info("日本郵便・eBay SpeedPAK・DHL・FedExを比較します。公式運賃の自動取得は未実装です。各社の正式見積額を入力してください。")
     volume_weight = length * width * height / 5000 if length * width * height > 0 else 0.0
     st.caption(f"参考：実重量 {weight:.2f}kg / 容積重量（÷5000の仮計算） {volume_weight:.2f}kg。実際の計算・適用重量は各社のサービスにより異なります。")
