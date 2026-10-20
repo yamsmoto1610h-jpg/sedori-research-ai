@@ -15,8 +15,8 @@ try:
 except (ImportError, OSError):
     BARCODE_AVAILABLE = False
 
-st.set_page_config(page_title="せどりリサーチAI Ver.2.2", page_icon="🔍", layout="centered")
-st.title("🔍 せどりリサーチAI Ver.2.2")
+st.set_page_config(page_title="せどりリサーチAI Ver.2.3", page_icon="🔍", layout="centered")
+st.title("🔍 せどりリサーチAI Ver.2.3")
 st.caption("JAN検索 → 国内・海外の利益試算 → 仕入れ判定")
 
 for key, value in {"jan": "", "product_name": "", "candidates": []}.items():
@@ -229,46 +229,39 @@ else:
     width = b.number_input("横（cm）", min_value=0.0, value=30.0)
     height = c.number_input("高さ（cm）", min_value=0.0, value=20.0)
     st.caption(f"梱包サイズ: {length:g}×{width:g}×{height:g}cm / 実重量: {weight:g}kg。容積重量の計算方法は配送会社ごとに異なります。")
-    st.markdown("**国際送料の自動計算**")
-    shipping_calc_mode = st.radio(
-        "送料の計算方法", ["自動概算（設定した料金単価）", "配送会社の正式見積もりを手入力"],
-        horizontal=False, key="shipping_calc_mode")
-    if shipping_calc_mode.startswith("自動"):
-        st.info("自動概算は配送会社の公式料金・リアルタイム運賃ではありません。単価は仮の初期値です。実際の送料は発送前に必ず配送会社で確認してください。")
-        carrier = st.selectbox("配送方法（計算方式の選択。公式料金ではありません）",
-                               ["実重量で計算する配送", "実重量と容積重量の大きい方で計算する配送"])
-        volumetric_divisor = 5000.0
-        if carrier.startswith("実重量と"):
-            volumetric_divisor = st.number_input("容積重量の除数（cm³/kg・配送会社に合わせる）",
-                                                 min_value=1000.0, max_value=10000.0,
-                                                 value=5000.0, step=500.0)
-        volume_weight = length * width * height / volumetric_divisor if volumetric_divisor else 0.0
-        chargeable_weight = max(weight, volume_weight) if carrier.startswith("実重量と") else weight
-        rounding_step = st.selectbox("課金重量の切り上げ単位", [0.5, 1.0], index=0,
-                                     format_func=lambda v: f"{v:g} kg単位")
-        billed_weight = math.ceil(chargeable_weight / rounding_step) * rounding_step if chargeable_weight > 0 else 0.0
-        st.caption(f"容積重量: {volume_weight:.2f} kg / 計算対象重量: {chargeable_weight:.2f} kg / 課金重量: {billed_weight:.2f} kg")
-        default_rates = {"アメリカ": (2500, 2200), "カナダ": (2800, 2500),
-                         "イギリス": (2900, 2600), "ドイツ": (2900, 2600),
-                         "フランス": (2900, 2600), "オーストラリア": (2600, 2400),
-                         "その他": (3000, 2800)}
-        base_default, kg_default = default_rates[destination]
-        st.caption("以下の初期単価は操作例であり、実在の配送会社の料金表ではありません。契約運賃や見積書の金額に変更してください。")
-        base_charge = st.number_input("基本料金（円・自分の料金表で設定）", min_value=0,
-                                      value=base_default, step=100)
-        charge_per_kg = st.number_input("課金重量1kgあたりの料金（円）", min_value=0,
-                                        value=kg_default, step=100)
-        surcharge = st.number_input("燃油・遠隔地・集荷等の追加料金（円）", min_value=0,
-                                     value=0, step=100)
-        shipping = math.ceil(base_charge + billed_weight * charge_per_kg + surcharge)
-        st.metric("自動計算した国際送料（概算）", f"¥{shipping:,}")
-        st.caption("計算式：基本料金 ＋ 課金重量 × 1kg単価 ＋ 追加料金。重量・寸法・発送制限・料金体系は配送会社ごとに異なります。")
-        shipping_verified = False
-        st.warning("自動概算だけでは送料確認済みになりません。仕入れOK判定には配送会社の正式見積もりが必要です。")
+    st.markdown("**国際送料の配送会社比較（Ver.2.3）**")
+    st.info("日本郵便・eBay SpeedPAK・DHL・FedExを比較します。公式運賃の自動取得は未実装です。各社の正式見積額を入力してください。")
+    volume_weight = length * width * height / 5000 if length * width * height > 0 else 0.0
+    st.caption(f"参考：実重量 {weight:.2f}kg / 容積重量（÷5000の仮計算） {volume_weight:.2f}kg。実際の計算・適用重量は各社のサービスにより異なります。")
+    carrier_names = ["日本郵便（EMS等）", "eBay SpeedPAK（CPaSS）", "DHL", "FedEx"]
+    st.caption("見積もりのない会社は0円のままにしてください。0円は無料ではなく『未入力』です。")
+    quotes = {}
+    verified_quotes = {}
+    for carrier_name in carrier_names:
+        with st.expander(f"{carrier_name} の見積もりを入力"):
+            amount = st.number_input(f"{carrier_name} の総送料（円）", min_value=0, value=0, step=100, key=f"v23_quote_{carrier_name}")
+            st.caption("燃油・遠隔地・集荷等の追加料金を含めた、売り手の負担総額を入力してください。関税・輸入税は下の別欄で計算します。")
+            checked = st.checkbox(f"{carrier_name} の公式見積もり・適用条件を確認済み", key=f"v23_verified_{carrier_name}")
+            quotes[carrier_name] = amount
+            verified_quotes[carrier_name] = checked and amount > 0
+    valid_quotes = sorted([(name, value) for name, value in quotes.items() if value > 0], key=lambda x: x[1])
+    if valid_quotes:
+        st.markdown("**送料比較（入力された見積もりのみ）**")
+        st.dataframe([{"配送会社": name, "送料（円）": f"¥{value:,}", "確認状況": "公式見積確認済" if verified_quotes[name] else "未確認"} for name, value in valid_quotes], use_container_width=True, hide_index=True)
+        cheapest_name, cheapest_value = valid_quotes[0]
+        st.caption(f"入力された金額の最安は {cheapest_name}：¥{cheapest_value:,}。未入力の会社との比較や配送可否は判断できません。")
+        selected_carrier = st.selectbox("利益計算に使う配送会社", [name for name, _ in valid_quotes], key="v23_selected_carrier")
+        shipping = quotes[selected_carrier]
+        shipping_verified = verified_quotes[selected_carrier]
+        st.metric("利益計算に反映する国際送料", f"¥{shipping:,}")
+        if not shipping_verified:
+            st.warning("選択した配送会社の正式見積もりが未確認です。仕入れOK判定には使えません。")
     else:
-        shipping = st.number_input("国際送料（円・配送会社の正式見積額）", min_value=0,
-                                   value=6500, step=100)
-        shipping_verified = st.checkbox("配送会社の正式見積もりで送料を確認済み")
+        st.warning("送料の見積もりが未入力です。下の利益計算は送料を含まない仮計算となります。仕入れ判断はできません。")
+        selected_carrier = None
+        shipping = 0
+        shipping_verified = False
+    st.caption("日本郵便の料金確認：https://www.post.japanpost.jp/int/charge/ ／ SpeedPAKはCPaSS内の料金を確認。DHL・FedExは各社公式見積もりを利用してください。配送日数・追跡・補償・禁制品・サイズ制限も確認してください。")
     st.markdown("**輸入費用（売り手負担額のみ）**")
     customs_verified = st.checkbox("関税・輸入税・通関手数料の負担と金額を確認済み")
     duty = st.number_input("売り手負担の関税（円）", min_value=0, value=0, step=100)
