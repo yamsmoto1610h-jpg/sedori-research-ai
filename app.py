@@ -15,8 +15,8 @@ try:
 except (ImportError, OSError):
     BARCODE_AVAILABLE = False
 
-st.set_page_config(page_title="せどりリサーチAI Ver.2.1", page_icon="🔍", layout="centered")
-st.title("🔍 せどりリサーチAI Ver.2.1")
+st.set_page_config(page_title="せどりリサーチAI Ver.2.2", page_icon="🔍", layout="centered")
+st.title("🔍 せどりリサーチAI Ver.2.2")
 st.caption("JAN検索 → 国内・海外の利益試算 → 仕入れ判定")
 
 for key, value in {"jan": "", "product_name": "", "candidates": []}.items():
@@ -229,8 +229,46 @@ else:
     width = b.number_input("横（cm）", min_value=0.0, value=30.0)
     height = c.number_input("高さ（cm）", min_value=0.0, value=20.0)
     st.caption(f"梱包サイズ: {length:g}×{width:g}×{height:g}cm / 実重量: {weight:g}kg。容積重量の計算方法は配送会社ごとに異なります。")
-    shipping_verified = st.checkbox("国際送料は配送会社の見積もりで確認済み")
-    shipping = st.number_input("国際送料（円・売り手が配送会社に支払う額）", min_value=0, value=6500, step=100)
+    st.markdown("**国際送料の自動計算**")
+    shipping_calc_mode = st.radio(
+        "送料の計算方法", ["自動概算（設定した料金単価）", "配送会社の正式見積もりを手入力"],
+        horizontal=False, key="shipping_calc_mode")
+    if shipping_calc_mode.startswith("自動"):
+        st.info("自動概算は配送会社の公式料金・リアルタイム運賃ではありません。単価は仮の初期値です。実際の送料は発送前に必ず配送会社で確認してください。")
+        carrier = st.selectbox("配送方法（計算方式の選択。公式料金ではありません）",
+                               ["実重量で計算する配送", "実重量と容積重量の大きい方で計算する配送"])
+        volumetric_divisor = 5000.0
+        if carrier.startswith("実重量と"):
+            volumetric_divisor = st.number_input("容積重量の除数（cm³/kg・配送会社に合わせる）",
+                                                 min_value=1000.0, max_value=10000.0,
+                                                 value=5000.0, step=500.0)
+        volume_weight = length * width * height / volumetric_divisor if volumetric_divisor else 0.0
+        chargeable_weight = max(weight, volume_weight) if carrier.startswith("実重量と") else weight
+        rounding_step = st.selectbox("課金重量の切り上げ単位", [0.5, 1.0], index=0,
+                                     format_func=lambda v: f"{v:g} kg単位")
+        billed_weight = math.ceil(chargeable_weight / rounding_step) * rounding_step if chargeable_weight > 0 else 0.0
+        st.caption(f"容積重量: {volume_weight:.2f} kg / 計算対象重量: {chargeable_weight:.2f} kg / 課金重量: {billed_weight:.2f} kg")
+        default_rates = {"アメリカ": (2500, 2200), "カナダ": (2800, 2500),
+                         "イギリス": (2900, 2600), "ドイツ": (2900, 2600),
+                         "フランス": (2900, 2600), "オーストラリア": (2600, 2400),
+                         "その他": (3000, 2800)}
+        base_default, kg_default = default_rates[destination]
+        st.caption("以下の初期単価は操作例であり、実在の配送会社の料金表ではありません。契約運賃や見積書の金額に変更してください。")
+        base_charge = st.number_input("基本料金（円・自分の料金表で設定）", min_value=0,
+                                      value=base_default, step=100)
+        charge_per_kg = st.number_input("課金重量1kgあたりの料金（円）", min_value=0,
+                                        value=kg_default, step=100)
+        surcharge = st.number_input("燃油・遠隔地・集荷等の追加料金（円）", min_value=0,
+                                     value=0, step=100)
+        shipping = math.ceil(base_charge + billed_weight * charge_per_kg + surcharge)
+        st.metric("自動計算した国際送料（概算）", f"¥{shipping:,}")
+        st.caption("計算式：基本料金 ＋ 課金重量 × 1kg単価 ＋ 追加料金。重量・寸法・発送制限・料金体系は配送会社ごとに異なります。")
+        shipping_verified = False
+        st.warning("自動概算だけでは送料確認済みになりません。仕入れOK判定には配送会社の正式見積もりが必要です。")
+    else:
+        shipping = st.number_input("国際送料（円・配送会社の正式見積額）", min_value=0,
+                                   value=6500, step=100)
+        shipping_verified = st.checkbox("配送会社の正式見積もりで送料を確認済み")
     st.markdown("**輸入費用（売り手負担額のみ）**")
     customs_verified = st.checkbox("関税・輸入税・通関手数料の負担と金額を確認済み")
     duty = st.number_input("売り手負担の関税（円）", min_value=0, value=0, step=100)
