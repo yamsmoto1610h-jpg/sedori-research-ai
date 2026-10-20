@@ -1,4 +1,7 @@
 import math
+import tempfile
+from pathlib import Path
+import streamlit.components.v1 as components
 import re
 from urllib.parse import quote
 
@@ -12,8 +15,8 @@ try:
 except (ImportError, OSError):
     BARCODE_AVAILABLE = False
 
-st.set_page_config(page_title="せどりリサーチAI Ver.2", page_icon="🔍", layout="centered")
-st.title("🔍 せどりリサーチAI Ver.2")
+st.set_page_config(page_title="せどりリサーチAI Ver.2.1", page_icon="🔍", layout="centered")
+st.title("🔍 せどりリサーチAI Ver.2.1")
 st.caption("JAN検索 → 国内・海外の利益試算 → 仕入れ判定")
 
 for key, value in {"jan": "", "product_name": "", "candidates": []}.items():
@@ -98,10 +101,50 @@ def rakuten_search(keyword):
         return [], f"楽天検索に失敗しました: {type(e).__name__}"
 
 
+# ChromeのBarcodeDetectorを使う軽量なカスタムコンポーネント。
+# HTMLは起動時に一時ディレクトリへ書き出すため、GitHubで追加ファイルは不要。
+SCANNER_HTML = r'''
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:14px system-ui;margin:0;color:inherit}button{padding:12px 18px;border:0;border-radius:9px;background:#147d64;color:white;font-weight:bold}button.stop{background:#555}video{display:block;width:100%;max-height:240px;object-fit:cover;border-radius:10px;background:#111;margin:10px 0}#status{margin:8px 0}#controls{display:flex;gap:10px}</style></head><body><div id="controls"><button id="start">📷 スキャン開始</button><button class="stop" id="stop" disabled>停止</button></div><video id="video" autoplay muted playsinline></video><div id="status" aria-live="polite">バーコードを枠内にかざしてください。シャッター不要です。</div><script>
+const send=(type,data={})=>window.parent.postMessage({isStreamlitMessage:true,type,...data},'*');
+send('streamlit:componentReady',{apiVersion:1});
+const resize=()=>send('streamlit:setFrameHeight',{height:document.body.scrollHeight+8});
+window.addEventListener('load',resize);window.addEventListener('resize',resize);
+let stream=null, running=false, detector=null, last='', scanBusy=false;
+const video=document.getElementById('video'), status=document.getElementById('status');
+function stop(){running=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}video.srcObject=null;document.getElementById('start').disabled=false;document.getElementById('stop').disabled=true;resize();}
+document.getElementById('stop').onclick=stop;
+document.getElementById('start').onclick=async()=>{
+ if(!('BarcodeDetector' in window)){status.textContent='このChromeでは自動読み取り機能が使えません。下の写真撮影か手入力をご利用ください。';return;}
+ try{
+ detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});
+ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+ video.srcObject=stream;await video.play();running=true;document.getElementById('start').disabled=true;document.getElementById('stop').disabled=false;status.textContent='バーコードにカメラを向けてください…';resize();requestAnimationFrame(loop);
+ }catch(e){stop();status.textContent='カメラを開始できません。Chromeのカメラ権限を許可してください。 ('+e.name+')';resize();}
+};
+async function loop(){if(!running)return;if(!scanBusy && video.readyState>=2){scanBusy=true;try{const codes=await detector.detect(video);for(const item of codes){const code=String(item.rawValue||'').trim();if(/^\d{8}$|^\d{12}$|^\d{13}$/.test(code)&&code!==last){last=code;status.textContent='読み取り成功：'+code;stop();send('streamlit:setComponentValue',{value:code,dataType:'json'});return;}}}catch(e){status.textContent='読み取り中にエラーが発生しました。写真撮影でも読み取れます。';stop();return;}finally{scanBusy=false;}}if(running)setTimeout(()=>requestAnimationFrame(loop),180);}
+window.addEventListener('pagehide',stop);
+</script></body></html>
+'''
+@st.cache_resource
+def get_live_scanner():
+    folder = Path(tempfile.mkdtemp(prefix="sedori_scanner_"))
+    (folder / "index.html").write_text(SCANNER_HTML, encoding="utf-8")
+    return components.declare_component("sedori_live_barcode", path=str(folder))
+
 st.subheader("① 商品を特定")
 if not BARCODE_AVAILABLE:
     st.info("バーコード解析ライブラリが利用できません。JANコードの手入力は利用できます。")
-camera = st.camera_input("バーコードを撮影")
+st.caption("Android Chromeでは『スキャン開始』を押してバーコードをかざすだけ。シャッター不要です。")
+scanned = get_live_scanner()(key="live_barcode_scanner", default=None)
+if scanned and scanned != st.session_state.jan:
+    st.session_state.jan = scanned
+    st.session_state.product_name = ""
+    st.session_state.last_product_jan = ""
+if scanned:
+    st.success(f"スキャン結果：{scanned}")
+with st.expander("うまく読み取れない場合：写真撮影"):
+    camera = st.camera_input("バーコードを撮影")
+
 if camera:
     code = read_barcode(Image.open(camera))
     if code:
